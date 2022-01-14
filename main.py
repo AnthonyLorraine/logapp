@@ -10,9 +10,11 @@ import os
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
-from os.path import join
-from os import getcwd
+from os.path import join, isfile
+from os import getcwd, listdir
 from sys import platform
+from typing import List
+
 from PIL import Image, ImageTk
 
 if platform == "win32":
@@ -109,6 +111,9 @@ class SearchBox(tk.Frame):
             self.search.insert('end', item)
             self.search_var.set('')
 
+    def get(self):
+        return self.search_var.get()
+
 
 class OptionsFrame(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
@@ -116,6 +121,9 @@ class OptionsFrame(tk.Frame):
         self.parent = parent
         self.pack_propagate(False)
         self.configure(background='black', width=300)
+        self.log_headers = []
+        self.log_data = []
+        self.log_data_column_width = 0
         self.log_list_var = tk.StringVar()
         self.log_list_var.set('Select a log type to read')
         self.log_list_options = ['HL7 BRD/REC Files', 'WebPAS Access Logs', 'Mex Application Logs']
@@ -156,10 +164,52 @@ class OptionsFrame(tk.Frame):
         directory = filedialog.askdirectory(initialdir=os.getcwd())
         self.working_directory_var.set(directory)
 
+    def render_logs(self):
+        self.parent.result_display_frame.display_results(
+            headers=tuple(self.log_headers),
+            results=self.log_data
+        )
+
+    def calculate_column_width(self, column_data_length: int):
+        if column_data_length > self.log_data_column_width:
+            self.log_data_column_width = column_data_length
+
+
     def read_logs(self):
-        result_grid: ttk.Treeview = self.parent.result_display_frame
-        self.parent.result_display_frame.column_names.append('Fish')
-        result_grid.update_idletasks()
+        directory = self.working_directory_var.get()
+        files = [join(directory, file) for file in listdir(directory)
+                 if isfile(join(directory, file))
+                 and ('.rec' in file or '.brd' in file)]
+        patient_id = '189442'
+        header = []
+        body = []
+        data = []
+
+        for file in files:
+            with open(file) as log_file:
+                for idx, log in enumerate(log_file):
+                    try:
+                        if not log[:80] == (80 * '-'):
+                            raise NameError
+                        if len(header) != 0:
+                            data.append(' '.join(body))
+                            header = []
+                            body = []
+                            if len(data[0]) > 1 and f'|{patient_id}^' in data[0]:
+                                self.calculate_column_width(len(data))
+                                self.log_data.append(data)
+                            data = []
+                            header.append(log)
+                        else:
+                            header.append(log[:80])
+                    except NameError:
+                        msg_body = str(log).strip()
+                        if 'Timeout waiting for incoming message' not in msg_body:
+                            body.append(str(log).strip())
+        self.log_headers.clear()
+        self.log_headers.append(('Data', 1500))
+        self.render_logs()
+
 
     def export_logs_to_csv(self):
         pass
@@ -168,18 +218,11 @@ class OptionsFrame(tk.Frame):
 class ResultDisplayFrame(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
-        self.parent = parent
+        self.parent: tk.Tk = parent
         self.pack_propagate(False)
-        self.configure(background='yellow')
-        self.column_names = ['cats', 'dogs', 'elbows']
 
-        self.results = ttk.Treeview(self, columns=self.column_names, show='headings')
-        for column in self.column_names:
-            self.results.heading(f'{column}', text=f'{column}')
+        self.results = ttk.Treeview(self, show='headings')
 
-        for contact in range(1, 100):
-            self.results.insert('', tk.END, text='',
-                                values=(f'first {contact}', f'last {contact}', f'email{contact}@example.com'))
         self.results.pack(side='left', fill='both', expand=True)
 
         self.results_scrollbar = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.results.yview)
@@ -191,7 +234,28 @@ class ResultDisplayFrame(tk.Frame):
     def select_result(self, event):
         for selected_item in self.results.selection():
             print(self.results.item(selected_item))
-        print(event)
+
+    def display_results(self, headers: tuple[str, int], results: List[tuple]):
+        self.set_headers(headers)
+        self.set_results(results)
+
+    def set_headers(self, headers: List[tuple[str, int]]):
+        # cols requires (name, name, name)
+        # widths requires (20, 20, 20)
+        self.results['columns'] = ()
+        self.results['columns'] = headers
+        for idx, header_data in enumerate(headers):
+            self.results.heading(f'{header_data[0]}', text=f'{header_data[0]}')
+            self.results.column(idx+1, width=header_data[1])
+
+    def set_results(self, result_list: List[tuple]):
+        for item in self.results.get_children():
+            self.results.delete(item)
+        for result in result_list:
+            self.results.insert('',
+                                tk.END,
+                                text='',
+                                values=result)
 
 
 class ClientApp(tk.Frame):
@@ -212,7 +276,17 @@ if __name__ == '__main__':
     root = tk.Tk()
     root.title('Log Reader')
     root.state('zoomed')
-
+    DARK_THEME = ttk.Style(root)
+    DARK_THEME.theme_use("clam")
+    DARK_THEME.configure("Treeview",
+                         background="black",
+                         fieldbackground="black",
+                         foreground="white",
+                         bd=0,
+                         relief='flat',
+                         highlightcolor='grey',
+                         selectbackground='grey',
+                         highlightthickness=0)
     # icon_path = join(getcwd(), 'icon.jpg')
     # root.iconphoto(True, tk.PhotoImage(file=icon_path))
     ClientApp(root).pack(side='top', fill='both', expand=True)
