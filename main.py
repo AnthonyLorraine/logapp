@@ -111,12 +111,24 @@ class BRDParse:
 
 
 class SearchBox(tk.Frame):
+    """
+    Frame that includes an Entry box with Add/Remove buttons for modifying items in a list.
+    Add button: Adds item to the list, based on the text located in the entry box
+    Remove button: removes item to the list, based on selected item or if there are no selected
+    items, then the last added item.
+    """
     def __init__(self, parent, label, background, foreground, *args, **kwargs):
+        """
+        Construct a SearchBox (Frame subclass) with the parent MASTER
+        :param parent: Parent window or frame to place this widget on
+        :param label: Title of the widget (Displayed in the Label widget) inside the Searchbox.
+        :param background: Sets the background of the frame and all child widgets inside the Searchbox.
+        :param foreground: Sets the foreground of the frame and all child widgets inside the Searchbox.
+        """
         tk.Frame.__init__(self, parent, *args, **kwargs)
-        self.parent = parent
-        self.configure(
-            background=background)
+        self.configure(background=background)
 
+        # Widgets
         self.label = tk.Label(self,
                               text=f'{str(label).lower().capitalize()}',
                               bg=background,
@@ -125,7 +137,6 @@ class SearchBox(tk.Frame):
                               bd=0,
                               highlightthickness=0,
                               justify="center")
-
         self.search_var = tk.StringVar()
         self.entry = tk.Entry(self,
                               textvariable=self.search_var,
@@ -164,34 +175,28 @@ class SearchBox(tk.Frame):
                                        bg=background,
                                        fg=foreground)
 
+        # Packing
         self.label.pack(side='top')
-
-        self.search.pack(side='top',
-                         fill='x',
-                         anchor='n',
-                         expand=False,
-                         pady=(0, 10),
-                         padx=(70, 70))
-
-        self.scrollbar.pack(side='right',
-                            fill='y',
-                            expand=False)
-        self.entry.pack(side='top',
-                        anchor='n',
-                        pady=(0, 10),
-                        padx=(10, 10)
-                        )
+        self.search.pack(side='top', fill='x', anchor='n', expand=False, pady=(0, 10), padx=(70, 70))
+        self.scrollbar.pack(side='right', fill='y', expand=False)
+        self.entry.pack(side='top', anchor='n', pady=(0, 10), padx=(10, 10))
         self.add_button.pack(side='left', padx=(70, 5), ipadx=20)
         self.remove_button.pack(side='right', padx=(5, 70), ipadx=10)
 
-    def remove_item(self):
+    def remove_item(self) -> None:
+        """
+        Remove either the selected item or the most recently added item from the Searchbox Listbox widget.
+        """
         try:
             selected_item = self.search.curselection()[0]
             self.search.delete(selected_item)
         except IndexError:
             self.search.delete(self.search.size() - 1)
 
-    def add_item(self):
+    def add_item(self) -> None:
+        """
+        Add the item entered in the Searchbox Entry widget to the Searchbox Listbox widget. Cannot be an empty string.
+        """
         item = self.search_var.get()
         if len(item) == 0:
             pass
@@ -199,7 +204,11 @@ class SearchBox(tk.Frame):
             self.search.insert('end', item)
             self.search_var.set('')
 
-    def get_keywords(self):
+    def get_keywords(self) -> tuple[str, ]:
+        """
+        Get the list of keywords added to the Searchbox Listbox widget.
+        :return: Tuple[str]
+        """
         if isinstance(self.search_list.get(), str):
             return tuple(self.search_list.get())
         else:
@@ -207,57 +216,56 @@ class SearchBox(tk.Frame):
 
 
 class OptionsFrame(tk.Frame):
+    """
+    Options Frame for setting up the parameters for the parser that reads the logs used by the application.
+    """
     def __init__(self, parent, *args, **kwargs):
+        """
+        :param parent: Parent window or frame to place this widget on
+        """
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
         self.pack_propagate(False)
         self.configure(background='black', width=300)
+
         self.keywords = []
         self.log_headers = []
         self.log_data = []
         self.original_log_data = self.log_data
         self.log_data_column_width = 0
+
+        # Widgets
         self.log_list_var = tk.StringVar()
         self.log_list_var.set('Select a log type to read')
         self.log_list_options = ['HL7 BRD/REC Files', 'WebPAS Access Logs', 'Mex Application Logs']
         self.log_list = tk.OptionMenu(self, self.log_list_var, *self.log_list_options)
-        self.log_list.pack(side='top', padx=(20, 0))
-
         self.working_directory_button = tk.Button(self, text='Select Directory', command=self.select_working_folder)
         self.working_directory_var = tk.StringVar()
         self.working_directory_var.set(os.getcwd())
-        self.working_directory_button.pack(side='top', pady=(20, 0))
         self.working_directory_path_display = tk.Entry(self, textvariable=self.working_directory_var, width=100)
-        self.working_directory_path_display.pack(side='top', pady=(20, 0))
-
         self.read_logs_button = tk.Button(self, text='Read Logs', command=threading.Thread(target=self.read_logs).start)
-        self.read_logs_button.pack(side='top', pady=(20, 0))
-
         self.filter_button = tk.Button(self, text='Filter', command=self.filter)
-        self.filter_button.pack(side='top', pady=(20, 0))
-
         self.export_button = tk.Button(self, text='Export to CSV', command=self.export_logs_to_csv)
+        self.ur_number_search = SearchBox(self, label='UR Number search', background='black', foreground='white')
+        self.visit_number_search = SearchBox(self, label='visit number search', background='black', foreground='white')
+        self.wildcard_search = SearchBox(self, label='Anywhere search', background='black', foreground='white')
+
+        # Packing
+        self.log_list.pack(side='top', padx=(20, 0))
+        self.working_directory_button.pack(side='top', pady=(20, 0))
+        self.working_directory_path_display.pack(side='top', pady=(20, 0))
+        self.read_logs_button.pack(side='top', pady=(20, 0))
+        self.filter_button.pack(side='top', pady=(20, 0))
         self.export_button.pack(side='top', pady=(20, 0))
-
-        self.ur_number_search = SearchBox(self,
-                                          label='UR Number search',
-                                          background='black',
-                                          foreground='white')
         self.ur_number_search.pack(side='top', pady=(20, 0), fill='x')
-
-        self.visit_number_search = SearchBox(self,
-                                             label='visit number search',
-                                             background='black',
-                                             foreground='white')
         self.visit_number_search.pack(side='top', pady=(20, 0), fill='x')
-
-        self.wildcard_search = SearchBox(self,
-                                         label='Anywhere search',
-                                         background='black',
-                                         foreground='white')
         self.wildcard_search.pack(side='top', pady=(20, 0), fill='x')
 
-    def select_working_folder(self):
+    def select_working_folder(self) -> None:
+        """
+        Renders the filedialog.askdirectory dialog box requesting user input.
+        Sets the self.working_directory_var to the users chosen folder path.
+        """
         directory = filedialog.askdirectory(initialdir=os.getcwd())
         self.working_directory_var.set(directory)
 
