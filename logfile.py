@@ -55,7 +55,7 @@ class LogFolder:
 
 
 
-folder = LogFolder(r'C:\Users\e261712\Desktop\1383001', 'rec')
+folder = LogFolder(r'C:\Users\user\Desktop\datafolder', 'rec')
 print(folder)
 print(folder.logs)
 
