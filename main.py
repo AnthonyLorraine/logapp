@@ -503,7 +503,6 @@ class TreeViewData:
             filtered_logs = []
             for name, logs in self.log_folder.logs.items():
                 for idx, log in enumerate(logs):
-                    log: PASAccessLog
                     for ur_number in list(ur_numbers):
                         if int(ur_number) == log.ur_number:
                             filtered_logs.append(log)
@@ -513,9 +512,20 @@ class TreeViewData:
         else:
             self.log_folder.filtered_logs = {}
 
-
-    def filter_by_visit_number(self, visit_number: int):
-        pass
+    def filter_by_visit_number(self, visit_number: tuple):
+        # todo handle if there are already filters, need to append items to the list
+        if visit_number:
+            filtered_logs = []
+            for name, logs in self.log_folder.logs.items():
+                for idx, log in enumerate(logs):
+                    for visit_num in list(visit_number):
+                        if int(visit_num) == log.visit_number:
+                            filtered_logs.append(log)
+                    else:
+                        pass
+                self.log_folder.filtered_logs[name] = filtered_logs
+        else:
+            self.log_folder.filtered_logs = {}
 
     def filter_all(self, search_query: str):
         pass
@@ -714,7 +724,8 @@ class OptionsFrame(tk.Frame):
 
     def export_logs_to_csv(self):
         if self.tree_view_data:
-            with filedialog.asksaveasfile(mode='w', initialdir=os.getcwd(), defaultextension=".csv", filetypes=(('*.csv', 'CSV File'),)) as csv_file:
+            with filedialog.asksaveasfile(mode='w', initialdir=os.getcwd(), defaultextension=".csv",
+                                          filetypes=(('*.csv', 'CSV File'),)) as csv_file:
                 csv_writer = csv.writer(csv_file)
                 csv_writer.writerow(list(self.tree_view_data.header))
                 for log in self.tree_view_data.log_folder.log_list:
@@ -769,7 +780,8 @@ class ResultDisplayFrame(tk.Frame):
         self.results['columns'] = ()
         self.results['columns'] = tvd.header
         for heading in tvd.header:
-            self.results.heading(f'{heading}', text=f'{heading}', command=lambda _col=heading: self.sort_column(self.results, _col, False))
+            self.results.heading(f'{heading}', text=f'{heading}',
+                                 command=lambda _col=heading: self.sort_column(self.results, _col, False))
         self.delete_results()
         for log in tvd.log_folder.log_list:
             self.results.insert('',
