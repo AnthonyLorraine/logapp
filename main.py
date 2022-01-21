@@ -48,9 +48,9 @@ class BRDLog(Log):
             try:
                 self.message_date_time = datetime.strptime(self.msh[6], '%Y%m%d%H%M%S')
             except AttributeError:
-                print(self.raw)
+                pass
             except IndexError:
-                print(self.raw)
+                pass
             self.message_date = self.message_date_time.date()
             self.message_time = self.message_date_time.time()
             self.message_type = self.msh[8][12:]
@@ -109,9 +109,9 @@ class RECLog(Log):
             try:
                 self.message_date_time = datetime.strptime(self.msh[5][:14], '%Y%m%d%H%M%S')
             except AttributeError:
-                print(self.raw)
+                pass
             except IndexError:
-                print(self.raw)
+                pass
             self.message_date = self.message_date_time.date()
             self.message_time = self.message_date_time.time()
             self.message_type = self.msh[7][12:]
@@ -512,7 +512,7 @@ class TreeViewData:
                 self.log_folder.filtered_logs[name] = filtered_logs
         else:
             self.log_folder.filtered_logs = {}
-        print(self.log_folder.filtered_logs)
+
 
     def filter_by_visit_number(self, visit_number: int):
         pass
@@ -746,6 +746,7 @@ class ResultDisplayFrame(tk.Frame):
 
     def select_result(self, event):
         for selected_item in self.results.selection():
+            # todo something with selected results?
             print(self.results.item(selected_item))
 
     def sort_column(self, tv, col, reverse):
