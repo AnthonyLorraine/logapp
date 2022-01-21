@@ -292,6 +292,46 @@ class PASAccessLog(Log):
                self.visit_number, self.url, self.referer_url, self.raw
 
 
+class MEXAccessLog(Log):
+    def __init__(self, raw_data: str):
+        """
+        Converts the raw string data to the MexAccessLog object
+        :param raw_data: str data to be converted to class object
+        """
+        super().__init__(raw_data)
+        # # Enter date range
+        # date_from = datetime.strptime('03/08/2021 09:45:00', '%d/%m/%Y %H:%M:%S')
+        # date_to = datetime.strptime('03/08/2021 11:15:00', '%d/%m/%Y %H:%M:%S')
+        #
+        # def write_to_file(_data):
+        #     with open('data.csv', 'a', newline='') as csv_file:
+        #         w = csv.writer(csv_file)
+        #         w.writerow(data)
+        #
+        # header = []
+        # body = []
+        # data = []
+        #
+        # # Enter File Name
+        # with open('Log.80.2.old.tt.0') as mex_log_file:
+        #     for idx, log in enumerate(mex_log_file):
+        #         try:
+        #             date = datetime.strptime(log[:19], '%d/%m/%Y %H:%M:%S')
+        #             if len(header) != 0:
+        #                 data.append(header[0])
+        #                 data.append(' '.join(body))
+        #                 header = []
+        #                 body = []
+        #                 if date_from < date < date_to:
+        #                     write_to_file(data)
+        #                 data = []
+        #                 header.append(log)
+        #             else:
+        #                 header.append(log[:19])
+        #         except ValueError:
+        #             body.append(str(log).strip())
+
+
 class LogType(enum.Enum):
     """
     Enum to call the correct log from the LogFile class.
@@ -299,6 +339,7 @@ class LogType(enum.Enum):
     BRD = BRDLog
     REC = RECLog
     PASACCESSLOG = PASAccessLog
+    MEXACCESSLOG = MEXAccessLog
 
 
 class LogFile:
