@@ -14,6 +14,31 @@ from typing import TextIO, Tuple, List
 from urllib import parse
 
 
+def color_variant(hex_color, brightness_offset=1):
+    """ takes a color like #87c95f and produces a lighter or darker variant
+    https://chase-seibert.github.io/blog/2011/07/29/python-calculate-lighterdarker-rgb-colors.html
+    """
+    if len(hex_color) != 7:
+        raise Exception("Passed %s into color_variant(), needs to be in #87c95f format." % hex_color)
+    rgb_hex = [hex_color[x:x + 2] for x in [1, 3, 5]]
+    new_rgb_int = [int(hex_value, 16) + brightness_offset for hex_value in rgb_hex]
+    new_rgb_int = [min([255, max([0, i])]) for i in new_rgb_int]  # make sure new values are between 0 and 255
+    # hex() produces "0x88", we want just "88"
+    return "#" + "".join([hex(i)[2:] for i in new_rgb_int])
+
+
+# Colours
+BACKGROUND = '#121212'
+BACKGROUND_2 = '#242424'
+BACKGROUND_3 = '#363636'
+BACKGROUND_4 = '#484848'
+FOREGROUND = '#7b7b7b'
+HIGHLIGHTS = '#8bc6fe'
+BORDERS = '#008ffd'
+ERROR = '#eb6773'
+ERROR_TEXT = '#000'
+
+
 # Log Classes
 
 
@@ -667,7 +692,7 @@ class SearchBox(tk.Frame):
             self.search.insert('end', item)
             self.search_var.set('')
 
-    def get_keywords(self) -> tuple[str,]:
+    def get_keywords(self) -> Tuple[str,]:
         """
         Get the list of keywords added to the Searchbox Listbox widget.
         :return: Tuple[str]
@@ -676,6 +701,23 @@ class SearchBox(tk.Frame):
             return tuple(self.search_list.get())
         else:
             return self.search_list.get()
+
+
+class Button(tk.Button):
+    def __init__(self, parent, *args, **kwargs):
+        """
+        param parent: Parent window or frame to place this widget on
+        """
+        tk.Button.__init__(self, parent, *args, **kwargs)
+        self.configure(background=BACKGROUND,
+                       foreground=FOREGROUND,
+                       highlightcolor=BACKGROUND,
+                       highlightbackground=BACKGROUND,
+                       highlightthickness=0,
+                       activebackground=BACKGROUND_2,
+                       activeforeground='white',
+                       borderwidth=0
+                       )
 
 
 class OptionsFrame(tk.Frame):
@@ -690,34 +732,61 @@ class OptionsFrame(tk.Frame):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent: ClientApp = parent
         self.pack_propagate(False)
-        self.configure(background='black', width=300)
+        self.configure(background=BACKGROUND, width=300)
 
         # Widgets
+        self.title = tk.Label(self,
+                              text='Logger',
+                              background=BACKGROUND,
+                              foreground=FOREGROUND,
+                              font=('Calibri', 44)
+                              )
+        self.seperator = ttk.Separator(self, orient='horizontal')
         self.log_list_var = tk.StringVar()
-        self.log_list_var.set('Select a log type to read')
-        self.log_list = tk.OptionMenu(self, self.log_list_var, *[suffix.name for suffix in Suffix])
-        self.working_directory_button = tk.Button(self, text='Select Directory', command=self.select_working_folder)
+        for suffix in Suffix:
+            tk.Radiobutton(self,
+                           name=f'rb_{suffix.name}',
+                           text=suffix.name,
+                           value=suffix.name,
+                           background=BACKGROUND,
+                           foreground=FOREGROUND,
+                           highlightcolor=FOREGROUND,
+                           highlightbackground=BACKGROUND,
+                           highlightthickness=0,
+                           activebackground=BACKGROUND_2,
+                           activeforeground='white',
+                           borderwidth=0,
+                           indicatoron=False,
+                           selectcolor=BACKGROUND_3,
+                           variable=self.log_list_var,
+                           command=self.radio_selected
+                           )
+        self.working_directory_button = Button(self, text='Set Directory', command=self.select_working_folder)
         self.working_directory_var = tk.StringVar()
         self.working_directory_var.set(os.getcwd())
-        self.working_directory_path_display = tk.Entry(self, textvariable=self.working_directory_var, width=100)
-        self.read_logs_button = tk.Button(self, text='Read Logs', command=self.read_logs)
-        self.filter_button = tk.Button(self, text='Filter', command=self.filter)
-        self.export_button = tk.Button(self, text='Export to CSV', command=self.export_logs_to_csv)
-        self.ur_number_search = SearchBox(self, label='UR Number search', background='black', foreground='white')
-        self.visit_number_search = SearchBox(self, label='visit number search', background='black', foreground='white')
-        self.wildcard_search = SearchBox(self, label='Anywhere search', background='black', foreground='white')
+
+        self.read_logs_button = Button(self, text='Read Logs', command=self.read_logs)
+        self.filter_button = Button(self, text='Filter', command=self.filter)
+        self.export_button = Button(self, text='Export to CSV', command=self.export_logs_to_csv)
+
+        self.ur_number_search = SearchBox(self, label='UR Number search', background=BACKGROUND, foreground=FOREGROUND)
+        self.visit_number_search = SearchBox(self, label='visit number search', background=BACKGROUND,
+                                             foreground=FOREGROUND)
+        self.wildcard_search = SearchBox(self, label='Anywhere search', background=BACKGROUND, foreground=FOREGROUND)
 
         # Packing
-        self.log_list.pack(side='top', padx=(20, 0))
-        self.working_directory_button.pack(side='top', pady=(20, 0))
-        self.working_directory_path_display.pack(side='top', pady=(20, 0))
-        self.read_logs_button.pack(side='top', pady=(20, 0))
-        self.filter_button.pack(side='top', pady=(20, 0))
-        self.export_button.pack(side='top', pady=(20, 0))
-        self.ur_number_search.pack(side='top', pady=(20, 0), fill='x')
-        self.visit_number_search.pack(side='top', pady=(20, 0), fill='x')
-        self.wildcard_search.pack(side='top', pady=(20, 0), fill='x')
+        self.title.pack(side='top', padx=(20, 0), pady=(30, 20))
+        self.seperator.pack(side='top', fill='x', pady=20)
 
+        self.working_directory_button.pack(side='top', pady=(00, 0), fill='x', ipady=10)
+
+        for suffix in Suffix:
+            self.nametowidget(f'rb_{suffix.name}').pack(side='top',
+                                                        fill='x',
+                                                        ipady=13)
+
+        self.read_logs_button.pack(side='top', fill='x', ipady=10)
+        self.export_button.pack(side='top', fill='x', ipady=10)
         self.tree_view_data = None
 
     def select_working_folder(self) -> None:
@@ -727,6 +796,7 @@ class OptionsFrame(tk.Frame):
         """
         directory = filedialog.askdirectory(initialdir=os.getcwd())
         self.working_directory_var.set(directory)
+        self.parent.parent.title(f'Logger [{self.working_directory_var.get()}]')
 
     def log_file_suffix(self):
         try:
@@ -734,7 +804,7 @@ class OptionsFrame(tk.Frame):
         except KeyError:
             messagebox.showerror(title='No log type selected',
                                  message='Invalid log file type to read. Please select a valid log file type')
-            self.log_list.configure(bg='red')
+            # self.log_list.configure(self, bg=ERROR)
             # todo revert the color after new selection made
 
     def read_logs(self):
@@ -774,6 +844,20 @@ class OptionsFrame(tk.Frame):
         else:
             messagebox.showwarning(title='No data to export',
                                    message='You haven\'t loaded any data to export.')
+
+    def radio_selected(self):
+        selected_log = self.log_list_var.get()
+        if 'PAS' in selected_log or 'BRD' in selected_log or 'REC' in selected_log:
+            self.ur_number_search.pack(side='top', pady=(20, 0), fill='x')
+            self.visit_number_search.pack(side='top', pady=(20, 0), fill='x')
+            self.wildcard_search.pack(side='top', pady=(20, 0), fill='x')
+            self.filter_button.pack(side='top', pady=(0, 0), fill='x', ipady=10)
+        else:
+            self.ur_number_search.forget()
+            self.visit_number_search.forget()
+            self.wildcard_search.forget()
+            self.filter_button.forget()
+
 
 
 class ResultDisplayFrame(tk.Frame):
@@ -848,10 +932,11 @@ class ClientApp(tk.Frame):
 
 if __name__ == '__main__':
     root = tk.Tk()
-    root.title('Log Reader')
-    root.state('zoomed')
+    root.geometry('1920x1080')
+    root.title('Logger')
+    # root.state('zoomed')
     DARK_THEME = ttk.Style(root)
-    DARK_THEME.theme_use("clam")
+
     DARK_THEME.configure("Treeview",
                          background="black",
                          fieldbackground="black",
@@ -861,5 +946,12 @@ if __name__ == '__main__':
                          highlightcolor='grey',
                          selectbackground='grey',
                          highlightthickness=0)
+    DARK_THEME.configure('TCombobox',
+                         arrowsize=0,
+                         fieldbackground=BACKGROUND,
+                         foreground=FOREGROUND,
+                         highlightcolor=BACKGROUND,
+                         )
+
     ClientApp(root).pack(side='top', fill='both', expand=True)
     root.mainloop()
