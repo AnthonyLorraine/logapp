@@ -1,4 +1,5 @@
 import csv
+import sys
 import tkinter as tk
 import gzip
 import os
@@ -118,6 +119,16 @@ class BRDLog(Log):
         return f'<BRDLog MsgID:{self.message_id} MsgType:{self.message_type} MRN:{self.ur_number}>'
 
 
+    def header(self):
+        return 'ip_address', 'user', 'datetime', 'method', 'response_code', 'host', 'ur_number', 'visit_number', \
+               'visited_url', 'referred_url', 'raw '
+
+    def values(self):
+        return self.ip_address, self.user, self.datetime, self.method, self.response_code, self.host, self.ur_number, \
+               self.visit_number, self.url, self.referer_url, self.raw
+
+
+
 class RECLog(Log):
     """
     Receiver Log class has common HL7 Attributes
@@ -186,6 +197,16 @@ class RECLog(Log):
 
     def __repr__(self):
         return f'<RECLog MsgID:{self.message_id} MsgType:{self.message_type} MRN:{self.ur_number}>'
+
+
+    def header(self):
+        return 'ip_address', 'user', 'datetime', 'method', 'response_code', 'host', 'ur_number', 'visit_number', \
+               'visited_url', 'referred_url', 'raw '
+
+    def values(self):
+        return self.ip_address, self.user, self.datetime, self.method, self.response_code, self.host, self.ur_number, \
+               self.visit_number, self.url, self.referer_url, self.raw
+
 
 
 class PASAccessLog(Log):
@@ -361,8 +382,8 @@ class LogType(enum.Enum):
     """
     Enum to call the correct log from the LogFile class.
     """
-    BRD = BRDLog
-    REC = RECLog
+    BRDTRANSACTIONLOG = BRDLog
+    RECTRANSACTIONLOG = RECLog
     PASACCESSLOG = PASAccessLog
     MEXACCESSLOG = MEXAccessLog
 
@@ -385,6 +406,7 @@ class LogFile:
         self._get_header()
 
     def _get_header(self):
+        print('LogFile._get_header', self._logs[0].header())
         self.header = self._logs[0].header()
 
     def _create_log_files(self):
@@ -468,7 +490,7 @@ class LogFolder:
     """
     Folder level class that contains a list of log files, each logfile contains logs.
     """
-
+    # todo if existing txt files in folder then it crashes ;(
     def __init__(self, directory_path: str, log_file_suffix: Suffix):
         """
         Takes the given directory path and checks it for the file suffix provided, then uses the search word list to
@@ -719,6 +741,45 @@ class Button(tk.Button):
                        borderwidth=0
                        )
 
+        self.bind('<Enter>', self.on_enter)
+        self.bind('<Leave>', self.on_leave)
+
+    def on_enter(self, event):
+        self['background'] = BACKGROUND_2
+        self['foreground'] = 'white'
+
+    def on_leave(self, event):
+        self['background'] = BACKGROUND
+        self['foreground'] = FOREGROUND
+
+
+class RadioButton(tk.Radiobutton):
+    def __init__(self, parent, *args, **kwargs):
+        """
+        :param parent: Parent window or frame to place this widget on
+        """
+        tk.Radiobutton.__init__(self, parent, *args, **kwargs)
+        self.bind('<Enter>', self.on_enter)
+        self.bind('<Leave>', self.on_leave)
+        self.configure(background=BACKGROUND,
+                       foreground=FOREGROUND,
+                       highlightcolor=FOREGROUND,
+                       highlightbackground=BACKGROUND,
+                       highlightthickness=0,
+                       activebackground=BACKGROUND_2,
+                       activeforeground='white',
+                       borderwidth=0,
+                       indicatoron=False,
+                       selectcolor=BACKGROUND_3, )
+
+    def on_enter(self, event):
+        self['background'] = BACKGROUND_2
+        self['foreground'] = 'white'
+
+    def on_leave(self, event):
+        self['background'] = BACKGROUND
+        self['foreground'] = FOREGROUND
+
 
 class OptionsFrame(tk.Frame):
     """
@@ -730,6 +791,7 @@ class OptionsFrame(tk.Frame):
         :param parent: Parent window or frame to place this widget on
         """
         tk.Frame.__init__(self, parent, *args, **kwargs)
+        self.selected_data = []
         self.parent: ClientApp = parent
         self.pack_propagate(False)
         self.configure(background=BACKGROUND, width=300)
@@ -741,26 +803,16 @@ class OptionsFrame(tk.Frame):
                               foreground=FOREGROUND,
                               font=('Calibri', 44)
                               )
-        self.seperator = ttk.Separator(self, orient='horizontal')
+        self.separator = ttk.Separator(self, orient='horizontal')
         self.log_list_var = tk.StringVar()
         for suffix in Suffix:
-            tk.Radiobutton(self,
-                           name=f'rb_{suffix.name}',
-                           text=suffix.name,
-                           value=suffix.name,
-                           background=BACKGROUND,
-                           foreground=FOREGROUND,
-                           highlightcolor=FOREGROUND,
-                           highlightbackground=BACKGROUND,
-                           highlightthickness=0,
-                           activebackground=BACKGROUND_2,
-                           activeforeground='white',
-                           borderwidth=0,
-                           indicatoron=False,
-                           selectcolor=BACKGROUND_3,
-                           variable=self.log_list_var,
-                           command=self.radio_selected
-                           )
+            RadioButton(self,
+                        name=f'rb_{suffix.name}',
+                        text=suffix.name,
+                        value=suffix.name,
+                        variable=self.log_list_var,
+                        command=self.radio_selected
+                        )
         self.working_directory_button = Button(self, text='Set Directory', command=self.select_working_folder)
         self.working_directory_var = tk.StringVar()
         self.working_directory_var.set(os.getcwd())
@@ -776,7 +828,7 @@ class OptionsFrame(tk.Frame):
 
         # Packing
         self.title.pack(side='top', padx=(20, 0), pady=(30, 20))
-        self.seperator.pack(side='top', fill='x', pady=20)
+        self.separator.pack(side='top', fill='x', pady=20)
 
         self.working_directory_button.pack(side='top', pady=(00, 0), fill='x', ipady=10)
 
@@ -827,6 +879,7 @@ class OptionsFrame(tk.Frame):
     def render(self):
         self.tree_view_data: TreeViewData
         try:
+            print(self.tree_view_data)
             self.parent.result_display_frame.display_results(self.tree_view_data)
         except TypeError:
             messagebox.showerror(title='No log files found',
@@ -835,15 +888,37 @@ class OptionsFrame(tk.Frame):
 
     def export_logs_to_csv(self):
         if self.tree_view_data:
-            with filedialog.asksaveasfile(mode='w', initialdir=os.getcwd(), defaultextension=".csv",
-                                          filetypes=(('*.csv', 'CSV File'),)) as csv_file:
+            new_file = filedialog.asksaveasfilename(initialdir=os.getcwd(), defaultextension=".csv",
+                                                    filetypes=(('*.csv', 'CSV File'),))
+            with open(new_file, 'w', newline='') as csv_file:
                 csv_writer = csv.writer(csv_file)
                 csv_writer.writerow(list(self.tree_view_data.header))
-                for log in self.tree_view_data.log_folder.log_list:
-                    csv_writer.writerow(list(log.values()))
+                try:
+                    if self.selected_data and len(self.selected_data) > 1:
+                        for log in self.selected_data:
+                            csv_writer.writerow(log)
+                    elif self.selected_data and len(self.selected_data) == 1:
+                        answer = messagebox.askyesnocancel('Only export one record?\n\n',
+                                                           'You are exporting only one record.\n'
+                                                           'Yes: Only one record\n'
+                                                           'No: All data.\n'
+                                                           'Cancel: Change options',
+                                                           )
+                        if answer:
+                            for log in self.selected_data:
+                                csv_writer.writerow(log)
+                        elif not answer:
+                            for log in self.tree_view_data.log_folder.log_list:
+                                csv_writer.writerow(list(log.values()))
+                    else:
+                        for log in self.tree_view_data.log_folder.log_list:
+                            csv_writer.writerow(list(log.values()))
+                except TypeError:
+                    os.remove(new_file)
         else:
             messagebox.showwarning(title='No data to export',
                                    message='You haven\'t loaded any data to export.')
+
 
     def radio_selected(self):
         selected_log = self.log_list_var.get()
@@ -859,7 +934,6 @@ class OptionsFrame(tk.Frame):
             self.filter_button.forget()
 
 
-
 class ResultDisplayFrame(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
@@ -869,7 +943,6 @@ class ResultDisplayFrame(tk.Frame):
         self.results = ttk.Treeview(self, show='headings')
 
         self.results.pack(side='left', fill='both', expand=True)
-
         self.y_scrollbar = ttk.Scrollbar(self.results, orient=tk.VERTICAL, command=self.results.yview)
         self.results.configure(yscroll=self.y_scrollbar.set)
         self.y_scrollbar.pack(side='right', fill='y', expand=False)
@@ -881,9 +954,10 @@ class ResultDisplayFrame(tk.Frame):
         self.results.bind('<<TreeviewSelect>>', self.select_result)
 
     def select_result(self, event):
+        self.parent.options_frame.selected_data.clear()
         for selected_item in self.results.selection():
-            # todo something with selected results?
-            print(self.results.item(selected_item))
+            self.parent.options_frame.selected_data.append(self.results.item(selected_item)['values'])
+
 
     def sort_column(self, tv, col, reverse):
         # Sourced from https://stackoverflow.com/questions/1966929/tk-treeview-column-sort
@@ -904,15 +978,18 @@ class ResultDisplayFrame(tk.Frame):
     def display_results(self, tvd: TreeViewData):
         self.results['columns'] = ()
         self.results['columns'] = tvd.header
+
         for heading in tvd.header:
             self.results.heading(f'{heading}', text=f'{heading}',
                                  command=lambda _col=heading: self.sort_column(self.results, _col, False))
+        print('2')
         self.delete_results()
+        print('3')
         for log in tvd.log_folder.log_list:
             self.results.insert('',
                                 tk.END,
                                 text='',
-                                values=log.values()
+                                values=log.values(),
                                 )
 
 
@@ -934,18 +1011,28 @@ if __name__ == '__main__':
     root = tk.Tk()
     root.geometry('1920x1080')
     root.title('Logger')
-    # root.state('zoomed')
+    if sys.platform == "win32":
+        root.state('zoomed')
     DARK_THEME = ttk.Style(root)
-
+    DARK_THEME.theme_use("default")
     DARK_THEME.configure("Treeview",
-                         background="black",
-                         fieldbackground="black",
-                         foreground="white",
-                         bd=0,
-                         relief='flat',
-                         highlightcolor='grey',
-                         selectbackground='grey',
-                         highlightthickness=0)
+                         fieldbackground=BACKGROUND,
+
+                         font=('Arial', 11))
+
+    DARK_THEME.configure("Treeview.Heading",
+                         rowheight=30,
+                         font=('Arial', 16)
+                         )
+    #                      background=(('active', 'yellow'), ),
+    #                      # fieldbackground=BACKGROUND,
+    #                      foreground='white',
+    #
+    #                      height=30,
+    #                      rowheight=60,
+    #                      font=('Arial', 16)
+    #                      )
+
     DARK_THEME.configure('TCombobox',
                          arrowsize=0,
                          fieldbackground=BACKGROUND,
