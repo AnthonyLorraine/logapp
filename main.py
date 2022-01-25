@@ -610,8 +610,6 @@ class LogFolder:
         return self._log_file_type
 
 
-# GUI Classes
-
 @dataclass
 class TreeViewData:
     log_folder: LogFolder
@@ -651,6 +649,10 @@ class TreeViewData:
 
     def filter_all(self, search_query: str):
         pass
+
+
+# GUI Classes
+# Widgets
 
 
 class ContextMenu(tk.Menu):
@@ -795,7 +797,6 @@ class Button(tk.Button):
                        activeforeground=WHITE_TEXT,
                        borderwidth=0
                        )
-
         self.bind('<Enter>', self.on_enter)
         self.bind('<Leave>', self.on_leave)
 
@@ -857,6 +858,93 @@ class RadioButton(tk.Radiobutton):
         self['foreground'] = FOREGROUND
 
 
+class ButtonFrame(tk.Frame):
+    def __init__(self, parent, title, subtext, command=None, *args, **kwargs):
+        tk.Frame.__init__(self, parent, *args, **kwargs)
+        self.pack_propagate(False)
+        self.configure(height=50, background=BACKGROUND)
+        self.button_command = command
+        self.subtext_var = tk.StringVar()
+        self.subtext_var.set(subtext)
+        self.title = tk.Label(self, name='btn_label_title', text=title, font=('', 12))
+        self.subtext = tk.Label(self, name='btn_label_subtext', textvariable=self.subtext_var, font=('', 10))
+        self.subtext.configure(background=BACKGROUND, foreground=FOREGROUND)
+        self.title.configure(background=BACKGROUND, foreground=FOREGROUND)
+
+        self.rel_y = 0.36
+        self.current_rel_y = self.rel_y
+        self.new_rel_y = 0.24
+        self.speed = 0.01
+        self.transitioning = False
+        self.title.place(anchor='n', relheight=0.3, relx=0.5, rely=self.rel_y)
+
+        self.bind('<Enter>', self.on_enter)
+        self.bind('<Leave>', self.on_leave)
+        self.bind('<1>', self.run_command)
+
+    def set_subtext(self, text: str):
+        self.subtext_var.set(text)
+
+    def run_command(self, event=None):
+        self.button_command()
+
+    def on_enter_animate(self, timeout=[]):
+        timeout.append('try')
+        if len(timeout) > 30:
+            self.reset_widget()
+            timeout.clear()
+        else:
+            if self.current_rel_y >= self.new_rel_y:
+                self.current_rel_y -= self.speed
+                self.title.place_configure(rely=self.current_rel_y)
+                if round(self.current_rel_y, 2) != self.new_rel_y:
+                    self.after(10, self.on_enter_animate)
+                elif round(self.current_rel_y, 2) == self.new_rel_y:
+                    self.subtext.place(anchor='n', relheight=0.3, relx=0.5, rely=0.56)
+                    timeout.clear()
+
+    def on_leave_animate(self, timeout=[]):
+        timeout.append('try')
+        if len(timeout) > 30:
+            self.reset_widget()
+            timeout.clear()
+        else:
+            if self.current_rel_y <= self.rel_y:
+                self.current_rel_y += self.speed
+                self.title.place_configure(rely=self.current_rel_y)
+                if round(self.current_rel_y, 2) != self.rel_y:
+                    self.after(10, self.on_leave_animate)
+                else:
+                    self.reset_widget()
+                    timeout.clear()
+
+    def reset_widget(self):
+        self.current_rel_y = self.rel_y
+        self.title.place_forget()
+        self.subtext.place_forget()
+        self.title.place(anchor='n', relheight=0.3, relx=0.5, rely=self.rel_y)
+
+    def on_enter(self, event=None):
+        self['background'] = BACKGROUND_2
+        self.title['background'] = BACKGROUND_2
+        self.title['foreground'] = WHITE_TEXT
+        self.subtext['foreground'] = WHITE_TEXT
+        self.subtext['background'] = BACKGROUND_2
+        self.on_enter_animate()
+
+    def on_leave(self, event=None):
+        self.subtext.place_forget()
+        self['background'] = BACKGROUND
+        self.title['background'] = BACKGROUND
+        self.subtext['foreground'] = FOREGROUND
+        self.on_leave_animate()
+
+
+
+
+# Frames
+
+
 class OptionsFrame(tk.Frame):
     """
     Options Frame for setting up the parameters for the parser that reads the logs used by the application.
@@ -884,7 +972,13 @@ class OptionsFrame(tk.Frame):
         self.separator = ttk.Separator(self,
                                        name='sep_title',
                                        orient='horizontal')
+        self.button_test = ButtonFrame(self,
+                                       name='btn_test',
+                                       title='Test',
+                                       subtext='subtext'
+                                       )
 
+        self.button_test.pack(side='top', pady=(0, 0), fill='x', ipady=10)
         self.step_one = tk.Label(self,
                                  name='lbl_step_one',
                                  text='Step 1',
@@ -914,11 +1008,15 @@ class OptionsFrame(tk.Frame):
                         variable=self.log_list_var,
                         command=self.radio_selected
                         )
-        self.working_directory_button = Button(self,
-                                               name='btn_working_directory',
-                                               text='Set Directory',
-                                               command=self.select_working_folder)
         self.working_directory_var = tk.StringVar()
+        self.working_directory_var.set('None')
+        self.working_directory_button = ButtonFrame(self,
+                                                    name='btn_working_directory',
+                                                    title='Set Directory',
+                                                    subtext=self.working_directory_var.get(),
+                                                    command=self.select_working_folder
+                                                    )
+
         self.working_directory_var.set(os.getcwd())
 
         self.read_logs_button = PrimaryButton(self, name='btn_read', text='Read Logs', command=self.read_logs)
@@ -942,13 +1040,14 @@ class OptionsFrame(tk.Frame):
 
         self.tree_view_data = None
 
-    def select_working_folder(self) -> None:
+    def select_working_folder(self, event=None) -> None:
         """
         Renders the filedialog.askdirectory dialog box requesting user input.
         Sets the self.working_directory_var to the users chosen folder path.
         """
         directory = filedialog.askdirectory(initialdir=os.getcwd())
         self.working_directory_var.set(directory)
+        self.working_directory_button.set_subtext(self.working_directory_var.get())
         self.parent.parent.title(f'Logger [{self.working_directory_var.get()}]')
         self.pack_step_two()
 
