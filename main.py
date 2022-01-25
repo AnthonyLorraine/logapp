@@ -15,19 +15,6 @@ from typing import TextIO, Tuple, List
 from urllib import parse
 
 
-def color_variant(hex_color, brightness_offset=1):
-    """ takes a color like #87c95f and produces a lighter or darker variant
-    https://chase-seibert.github.io/blog/2011/07/29/python-calculate-lighterdarker-rgb-colors.html
-    """
-    if len(hex_color) != 7:
-        raise Exception("Passed %s into color_variant(), needs to be in #87c95f format." % hex_color)
-    rgb_hex = [hex_color[x:x + 2] for x in [1, 3, 5]]
-    new_rgb_int = [int(hex_value, 16) + brightness_offset for hex_value in rgb_hex]
-    new_rgb_int = [min([255, max([0, i])]) for i in new_rgb_int]  # make sure new values are between 0 and 255
-    # hex() produces "0x88", we want just "88"
-    return "#" + "".join([hex(i)[2:] for i in new_rgb_int])
-
-
 # Colours
 BACKGROUND = '#121212'
 BACKGROUND_2 = '#242424'
@@ -38,6 +25,62 @@ HIGHLIGHTS = '#8bc6fe'
 BORDERS = '#008ffd'
 ERROR = '#eb6773'
 ERROR_TEXT = '#000'
+WHITE_TEXT = '#fff'
+
+# HL7 Message Definitions
+
+HL7_MESSAGE = {
+    'I': {
+        'ADT': {
+            'A01': 'Admission',
+            'A02': 'Transfer',
+            'A03': 'Discharge',
+            'A05': 'Pre-admission',
+            'A08': 'Visit Update',
+            'A11': 'Cancel Admission',
+            'A12': 'Cancel Transfer',
+            'A13': 'Cancel I/P Discharge',
+            'A14': 'Pre-admission',
+            'A21': 'On-Leave',
+            'A22': 'Return from leave',
+            'A27': 'Cancel Pre-admission',
+            'A28': 'PMI Registration',
+            'A31': 'PMI Update',
+            'A34': 'PMI Merge',
+            'A44': 'Change U/R for O/P visit',
+        },
+        'SIU': {
+            'S12': 'Notification of New Appointment',
+            'S14': 'Notification of Appointment Modification',
+            'S15': 'Notification of Appointment Cancellation',
+        }
+    },
+    'E': {
+        'ADT': {
+            'A03': 'Discharge Emergency Visit',
+            'A04': 'Register Emergency Visit',
+            'A08': 'Emergency Visit Update',
+            'A11': 'Cancel Emergency Visit',
+            'A13': 'Cancel Emergency Visit Discharge',
+            'A44': 'Change U/R for Emergency Visit',
+        }
+    },
+    'O': {
+        'ADT': {
+            'A03': 'Discharge',
+            'A04': 'Register Event (Attendance)',
+            'A05': 'Pre-admit a Patient (Booking)',
+            'A08': 'Update Patient Information (Update Booking/Reschedule)',
+            'A11': 'Cancel Visit (Unattend)',
+            'A13': 'Cancel Discharge',
+            'A38': 'Cancel Pre-admit (Booking)',
+            'A44': 'Change U/R for O/P visit',
+            'A31': 'PMI Update',
+        }
+    },
+
+}
+HL7_MESSAGE['S'] = HL7_MESSAGE['I']
 
 
 # Log Classes
@@ -50,6 +93,10 @@ class Log:
 
     def __init__(self, raw_data: str):
         self.raw = raw_data
+        self._parse()
+
+    def _parse(self):
+        pass
 
     def header(self):
         pass
@@ -58,9 +105,9 @@ class Log:
         pass
 
 
-class BRDLog(Log):
+class HL7Log(Log):
     """
-    Broadcaster Log class has common HL7 Attributes
+    Log class that has common HL7 Attributes
     """
 
     def __init__(self, raw_data: str):
@@ -69,144 +116,152 @@ class BRDLog(Log):
         :param raw_data: str data to be converted to class object
         """
         super().__init__(raw_data)
+
+    def _parse(self):
+        self._parse_headers()
+        self._build_msh()
+        self._build_pid()
+        self._build_pv1()
+        self._set_type_descriptions()
+
+    def _parse_headers(self):
+        self.pid = ''
         if len(self.raw) != 0:
             self.msh = str(self.raw)[53:].split('|')[0:19]
-            try:
-                self.message_date_time = datetime.strptime(self.msh[6], '%Y%m%d%H%M%S')
-            except AttributeError:
-                pass
-            except IndexError:
-                pass
-            self.message_date = self.message_date_time.date()
-            self.message_time = self.message_date_time.time()
-            self.message_type = self.msh[8][12:]
-            self.message_id = int(self.msh[9])
-            self.pid = ''
-            self.ur_number = ''
-            self.first_name = ''
-            self.middle_name = ''
-            self.last_name = ''
-            self.date_of_birth = None
             try:
                 self.pid = str(self.raw)[str(self.raw).find('PID|'):].split('|')[:31]
-                self.ur_number = self.pid[3].split('^')[0]
-                self.first_name = self.pid[5].split('^')[1]
-                self.middle_name = self.pid[5].split('^')[2]
-                self.last_name = self.pid[5].split('^')[0]
-                self.date_of_birth = datetime.strptime(self.pid[7], '%Y%m%d').date()
             except IndexError:
-                pass
+                self.pid = ''
             try:
                 self.pv1 = str(self.raw)[str(self.raw).find('PV1|'):].split('|')[:45]
-                self.admission_type = self.pv1[2]
-                self.ward = ''
-                self.bed = ''
-                self.visit_number = 0
-                if self.admission_type.lower() == 'e':
-                    self.ward = 'Emergency'
-                    self.bed = self.pv1[10].split('^')[1]
-                else:
-                    self.ward = self.pv1[3].split('^')[0]
-                    self.bed = self.pv1[3].split('^')[3]
-                    self.visit_number = int(self.pv1[5])
             except IndexError:
-                self.ward = ''
-                self.bed = ''
-                self.visit_number = 0
-                self.admission_type = ''
+                self.pv1 = ''
 
-    def __repr__(self):
-        return f'<BRDLog MsgID:{self.message_id} MsgType:{self.message_type} MRN:{self.ur_number}>'
-
-
-    def header(self):
-        return 'ip_address', 'user', 'datetime', 'method', 'response_code', 'host', 'ur_number', 'visit_number', \
-               'visited_url', 'referred_url', 'raw '
-
-    def values(self):
-        return self.ip_address, self.user, self.datetime, self.method, self.response_code, self.host, self.ur_number, \
-               self.visit_number, self.url, self.referer_url, self.raw
-
-
-
-class RECLog(Log):
-    """
-    Receiver Log class has common HL7 Attributes
-    """
-
-    def __init__(self, raw_data: str):
-        """
-        Converts the raw string data to the RECLog object
-        :param raw_data: str data to be converted to class object
-        """
-        super().__init__(raw_data)
-        if len(self.raw) != 0:
-            self.msh = str(self.raw)[53:].split('|')[0:19]
-            try:
-                self.message_date_time = datetime.strptime(self.msh[5][:14], '%Y%m%d%H%M%S')
-            except AttributeError:
-                pass
-            except IndexError:
-                pass
+    def _build_msh(self):
+        try:
+            self.message_date_time = datetime.strptime(self.msh[6], '%Y%m%d%H%M%S')
             self.message_date = self.message_date_time.date()
             self.message_time = self.message_date_time.time()
-            self.message_type = self.msh[7][12:]
+            self.message_trans_type = self.msh[8].split('^')[0]
+            self.message_type = self.msh[8].split('^')[1]
+            self.message_id = int(self.msh[9])
+        except AttributeError:
+            pass
+        except IndexError:
+            pass
+
+    def _build_pid(self):
+        self.ur_number = ''
+        self.first_name = ''
+        self.middle_name = ''
+        self.last_name = ''
+        self.date_of_birth = None
+        try:
+            self.ur_number = self.pid[3].split('^')[0]
+            self.first_name = self.pid[5].split('^')[1]
+            self.middle_name = self.pid[5].split('^')[2].replace('"', '')
+            self.last_name = self.pid[5].split('^')[0]
+            self.date_of_birth = datetime.strptime(self.pid[7], '%Y%m%d').date()
+        except IndexError:
+            pass
+
+    def _build_pv1(self):
+        try:
+            self.admission_type = self.pv1[2]
+            self.ward = ''
+            self.bed = ''
+            self.visit_number = 0
+            if self.admission_type.lower() == 'e':
+                self.ward = 'Emergency'
+                self.bed = self.pv1[10].split('^')[1]
+            else:
+                self.ward = self.pv1[3].split('^')[0]
+                self.bed = self.pv1[3].split('^')[2]
+                self.visit_number = int(self.pv1[5])
+        except IndexError:
+            self.ward = ''
+            self.bed = ''
+            self.visit_number = 0
+            self.admission_type = ''
+
+    def _set_type_descriptions(self):
+        self.type_description = ''
+        if self.admission_type != '':
+            self.type_description = HL7_MESSAGE[self.admission_type][self.message_trans_type][self.message_type]
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} MsgID:{self.message_id} MsgType:{self.message_type} MRN:{self.ur_number}>'
+
+    def header(self):
+        return 'message_id', 'message_date_time', 'message_type', 'type_description', 'ur_number', 'first_name', \
+               'middle_name', 'last_name', 'date_of_birth', 'visit_number', 'admission_type', 'ward', 'bed', 'raw'
+
+    def values(self):
+        if self.visit_number == 0:
+            visit = ''
+        else:
+            visit = self.visit_number
+        return self.message_id, self.message_date_time, self.message_type, self.type_description, \
+               self.ur_number, self.first_name, self.middle_name, self.last_name, self.date_of_birth, \
+               visit, self.admission_type, self.ward, self.bed, self.raw
+
+
+class BRDLog(HL7Log):
+    """
+    Broadcaster Log class
+    """
+    pass
+
+
+class RECLog(HL7Log):
+    """
+    Receiver Log class
+    """
+
+    def _build_msh(self):
+        try:
+            self.message_date_time = datetime.strptime(self.msh[5][:14], '%Y%m%d%H%M%S')
+            self.message_date = self.message_date_time.date()
+            self.message_time = self.message_date_time.time()
+            self.message_trans_type = self.msh[7].split('^')[0]
+            self.message_type = self.msh[7].split('^')[1]
             self.message_id = 0
             try:
                 self.message_id = int(self.msh[8])
             except ValueError:
                 self.message_id = self.msh[8]
-            self.pid = ''
-            self.ur_number = ''
-            self.first_name = ''
-            self.middle_name = ''
-            self.last_name = ''
-            self.date_of_birth = None
-            try:
-                self.pid = str(self.raw)[str(self.raw).find('PID|'):].split('|')[:31]
-                self.ur_number = self.pid[3].split('^')[0]
-                self.first_name = self.pid[5].split('^')[1]
-                self.middle_name = self.pid[5].split('^')[2]
-                self.last_name = self.pid[5].split('^')[0]
-                self.date_of_birth = datetime.strptime(self.pid[7], '%Y%m%d').date()
-            except IndexError:
-                pass
-            try:
-                self.pv1 = str(self.raw)[str(self.raw).find('PV1|'):].split('|')[:45]
-                self.admission_type = self.pv1[2]
-                self.ward = ''
+        except AttributeError:
+            pass
+        except IndexError:
+            pass
+
+    def _build_pv1(self):
+        try:
+            self.admission_type = self.pv1[2]
+            self.ward = ''
+            self.bed = ''
+            self.visit_number = 0
+            if self.admission_type.lower() == 'e':
+                self.ward = 'Emergency'
+                self.bed = self.pv1[10].split('^')[1]
+            elif self.admission_type.lower() == 'o':
+                self.ward = self.pv1[3].split('^')[0]
                 self.bed = ''
-                self.visit_number = 0
-                if self.admission_type.lower() == 'e':
-                    self.ward = 'Emergency'
-                    self.bed = self.pv1[10].split('^')[1]
+                self.visit_number = int(self.pv1[17].split('^')[0])
+            elif self.admission_type.lower() == 'i':
+                self.ward = self.pv1[3].split('^')[0]
+                self.bed = self.pv1[3].split('^')[2]
+                if self.pv1[1] == '':
+                    self.visit_number = self.pv1[19].split(' ')[0]
                 else:
-                    self.ward = self.pv1[3].split('^')[0]
-                    self.bed = self.pv1[3].split('^')[3]
-                    self.visit_number = int(self.pv1[5])
-            except ValueError:
-                try:
                     self.visit_number = int(self.pv1[17].split('^')[0])
-                except ValueError:
-                    self.visit_number = 0
-            except IndexError:
-                self.ward = ''
-                self.bed = ''
-                self.visit_number = 0
-                self.admission_type = ''
-
-    def __repr__(self):
-        return f'<RECLog MsgID:{self.message_id} MsgType:{self.message_type} MRN:{self.ur_number}>'
-
-
-    def header(self):
-        return 'ip_address', 'user', 'datetime', 'method', 'response_code', 'host', 'ur_number', 'visit_number', \
-               'visited_url', 'referred_url', 'raw '
-
-    def values(self):
-        return self.ip_address, self.user, self.datetime, self.method, self.response_code, self.host, self.ur_number, \
-               self.visit_number, self.url, self.referer_url, self.raw
-
+        except IndexError:
+            self.ward = ''
+            self.bed = ''
+            self.visit_number = 0
+            self.admission_type = ''
+        except ValueError:
+            self.visit_number = 0
 
 
 class PASAccessLog(Log):
@@ -338,46 +393,6 @@ class PASAccessLog(Log):
                self.visit_number, self.url, self.referer_url, self.raw
 
 
-class MEXAccessLog(Log):
-    def __init__(self, raw_data: str):
-        """
-        Converts the raw string data to the MexAccessLog object
-        :param raw_data: str data to be converted to class object
-        """
-        super().__init__(raw_data)
-        # # Enter date range
-        # date_from = datetime.strptime('03/08/2021 09:45:00', '%d/%m/%Y %H:%M:%S')
-        # date_to = datetime.strptime('03/08/2021 11:15:00', '%d/%m/%Y %H:%M:%S')
-        #
-        # def write_to_file(_data):
-        #     with open('data.csv', 'a', newline='') as csv_file:
-        #         w = csv.writer(csv_file)
-        #         w.writerow(data)
-        #
-        # header = []
-        # body = []
-        # data = []
-        #
-        # # Enter File Name
-        # with open('Log.80.2.old.tt.0') as mex_log_file:
-        #     for idx, log in enumerate(mex_log_file):
-        #         try:
-        #             date = datetime.strptime(log[:19], '%d/%m/%Y %H:%M:%S')
-        #             if len(header) != 0:
-        #                 data.append(header[0])
-        #                 data.append(' '.join(body))
-        #                 header = []
-        #                 body = []
-        #                 if date_from < date < date_to:
-        #                     write_to_file(data)
-        #                 data = []
-        #                 header.append(log)
-        #             else:
-        #                 header.append(log[:19])
-        #         except ValueError:
-        #             body.append(str(log).strip())
-
-
 class LogType(enum.Enum):
     """
     Enum to call the correct log from the LogFile class.
@@ -385,7 +400,6 @@ class LogType(enum.Enum):
     BRDTRANSACTIONLOG = BRDLog
     RECTRANSACTIONLOG = RECLog
     PASACCESSLOG = PASAccessLog
-    MEXACCESSLOG = MEXAccessLog
 
 
 class LogFile:
@@ -406,7 +420,10 @@ class LogFile:
         self._get_header()
 
     def _get_header(self):
-        print('LogFile._get_header', self._logs[0].header())
+        """
+        Sets the header name on the log file, based on the first row Log header field.
+        Used for setting the headers in the Treeview
+        """
         self.header = self._logs[0].header()
 
     def _create_log_files(self):
@@ -480,8 +497,8 @@ class LogFileType(enum.Enum):
 
 
 class Suffix(enum.Enum):
+    # todo rework this as cant have to txt suffixes
     PASAccessLog = 'txt'
-    MEXAccessLog = '0'
     BRDTransactionLog = 'brd'
     RECTransactionLog = 'rec'
 
@@ -490,6 +507,7 @@ class LogFolder:
     """
     Folder level class that contains a list of log files, each logfile contains logs.
     """
+
     # todo if existing txt files in folder then it crashes ;(
     def __init__(self, directory_path: str, log_file_suffix: Suffix):
         """
@@ -558,6 +576,8 @@ class LogFolder:
             with open(join(self._path, file), 'r') as log_file:
                 file_attributes = (file[:file.index(self._log_file_suffix) - 1], self._log_file_type)
                 log_file = LogFileType[self._log_file_type].value(file_attributes, log_file)
+                # todo raise custom error to remove the wrong long types, if there are multiple logs that use
+                # todo the same file suffix
                 if self.header is None:
                     self.header = log_file.header
                 self.logs |= log_file.to_dict()
@@ -617,6 +637,27 @@ class TreeViewData:
 
     def filter_all(self, search_query: str):
         pass
+
+
+class ContextMenu(tk.Menu):
+    def __init__(self, parent, event, *args, **kwargs):
+        """
+        param parent: Parent window or frame to place this widget on
+        """
+        tk.Menu.__init__(self, parent, *args, **kwargs)
+        self.my_event = event
+        self.configure(tearoff=0, takefocus=0)
+        self.add_command(label='Copy', command=self.copy)
+        self.tk_popup(event.x_root, event.y_root)
+
+    def copy(self):
+        self.clipboard_clear()
+        clipboard_list = []
+        self.clipboard_append(', '.join(self.my_event.widget['columns']))
+        self.clipboard_append('\n')
+        for log in self.my_event.widget.selection():
+            clipboard_list.append(', '.join([str(str_val) for str_val in self.my_event.widget.item(log)['values']]))
+        self.clipboard_append('\n'.join(clipboard_list))
 
 
 class SearchBox(tk.Frame):
@@ -737,18 +778,18 @@ class Button(tk.Button):
                        highlightbackground=BACKGROUND,
                        highlightthickness=0,
                        activebackground=BACKGROUND_2,
-                       activeforeground='white',
+                       activeforeground=WHITE_TEXT,
                        borderwidth=0
                        )
 
         self.bind('<Enter>', self.on_enter)
         self.bind('<Leave>', self.on_leave)
 
-    def on_enter(self, event):
+    def on_enter(self, event=None):
         self['background'] = BACKGROUND_2
-        self['foreground'] = 'white'
+        self['foreground'] = WHITE_TEXT
 
-    def on_leave(self, event):
+    def on_leave(self, event=None):
         self['background'] = BACKGROUND
         self['foreground'] = FOREGROUND
 
@@ -767,16 +808,16 @@ class RadioButton(tk.Radiobutton):
                        highlightbackground=BACKGROUND,
                        highlightthickness=0,
                        activebackground=BACKGROUND_2,
-                       activeforeground='white',
+                       activeforeground=WHITE_TEXT,
                        borderwidth=0,
                        indicatoron=False,
                        selectcolor=BACKGROUND_3, )
 
-    def on_enter(self, event):
+    def on_enter(self, event=None):
         self['background'] = BACKGROUND_2
-        self['foreground'] = 'white'
+        self['foreground'] = WHITE_TEXT
 
-    def on_leave(self, event):
+    def on_leave(self, event=None):
         self['background'] = BACKGROUND
         self['foreground'] = FOREGROUND
 
@@ -798,12 +839,15 @@ class OptionsFrame(tk.Frame):
 
         # Widgets
         self.title = tk.Label(self,
+                              name='lbl_title',
                               text='Logger',
                               background=BACKGROUND,
                               foreground=FOREGROUND,
                               font=('Calibri', 44)
                               )
-        self.separator = ttk.Separator(self, orient='horizontal')
+        self.separator = ttk.Separator(self,
+                                       name='sep_title',
+                                       orient='horizontal')
         self.log_list_var = tk.StringVar()
         for suffix in Suffix:
             RadioButton(self,
@@ -813,18 +857,19 @@ class OptionsFrame(tk.Frame):
                         variable=self.log_list_var,
                         command=self.radio_selected
                         )
-        self.working_directory_button = Button(self, text='Set Directory', command=self.select_working_folder)
+        self.working_directory_button = Button(self, name='btn_working_directory', text='Set Directory',
+                                               command=self.select_working_folder)
         self.working_directory_var = tk.StringVar()
         self.working_directory_var.set(os.getcwd())
 
-        self.read_logs_button = Button(self, text='Read Logs', command=self.read_logs)
-        self.filter_button = Button(self, text='Filter', command=self.filter)
-        self.export_button = Button(self, text='Export to CSV', command=self.export_logs_to_csv)
+        self.read_logs_button = Button(self, name='btn_read', text='Read Logs', command=self.read_logs)
+        self.filter_button = Button(self, name='btn_filter', text='Filter', command=self.filter)
+        self.export_button = Button(self, name='btn_export', text='Export to CSV', command=self.export_logs_to_csv)
 
-        self.ur_number_search = SearchBox(self, label='UR Number search', background=BACKGROUND, foreground=FOREGROUND)
-        self.visit_number_search = SearchBox(self, label='visit number search', background=BACKGROUND,
+        self.ur_number_search = SearchBox(self, name='srb_ur_number', label='UR Number search', background=BACKGROUND, foreground=FOREGROUND)
+        self.visit_number_search = SearchBox(self, name='srb_visit_number', label='visit number search', background=BACKGROUND,
                                              foreground=FOREGROUND)
-        self.wildcard_search = SearchBox(self, label='Anywhere search', background=BACKGROUND, foreground=FOREGROUND)
+        self.wildcard_search = SearchBox(self, name='srb_wildcard', label='Anywhere search', background=BACKGROUND, foreground=FOREGROUND)
 
         # Packing
         self.title.pack(side='top', padx=(20, 0), pady=(30, 20))
@@ -879,7 +924,6 @@ class OptionsFrame(tk.Frame):
     def render(self):
         self.tree_view_data: TreeViewData
         try:
-            print(self.tree_view_data)
             self.parent.result_display_frame.display_results(self.tree_view_data)
         except TypeError:
             messagebox.showerror(title='No log files found',
@@ -919,7 +963,6 @@ class OptionsFrame(tk.Frame):
             messagebox.showwarning(title='No data to export',
                                    message='You haven\'t loaded any data to export.')
 
-
     def radio_selected(self):
         selected_log = self.log_list_var.get()
         if 'PAS' in selected_log or 'BRD' in selected_log or 'REC' in selected_log:
@@ -952,12 +995,15 @@ class ResultDisplayFrame(tk.Frame):
         self.x_scrollbar.pack(side='bottom', fill='x', expand=False)
 
         self.results.bind('<<TreeviewSelect>>', self.select_result)
+        self.results.bind('<3>', self.show_context_menu)
+
+    def show_context_menu(self, event):
+        ContextMenu(self, event)
 
     def select_result(self, event):
         self.parent.options_frame.selected_data.clear()
         for selected_item in self.results.selection():
             self.parent.options_frame.selected_data.append(self.results.item(selected_item)['values'])
-
 
     def sort_column(self, tv, col, reverse):
         # Sourced from https://stackoverflow.com/questions/1966929/tk-treeview-column-sort
@@ -982,9 +1028,7 @@ class ResultDisplayFrame(tk.Frame):
         for heading in tvd.header:
             self.results.heading(f'{heading}', text=f'{heading}',
                                  command=lambda _col=heading: self.sort_column(self.results, _col, False))
-        print('2')
         self.delete_results()
-        print('3')
         for log in tvd.log_folder.log_list:
             self.results.insert('',
                                 tk.END,
@@ -1024,14 +1068,6 @@ if __name__ == '__main__':
                          rowheight=30,
                          font=('Arial', 16)
                          )
-    #                      background=(('active', 'yellow'), ),
-    #                      # fieldbackground=BACKGROUND,
-    #                      foreground='white',
-    #
-    #                      height=30,
-    #                      rowheight=60,
-    #                      font=('Arial', 16)
-    #                      )
 
     DARK_THEME.configure('TCombobox',
                          arrowsize=0,
