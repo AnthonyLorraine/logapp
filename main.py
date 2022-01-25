@@ -3,6 +3,7 @@ import sys
 import tkinter as tk
 import gzip
 import os
+import ipaddress
 import shutil
 import enum
 from tkinter import ttk
@@ -14,14 +15,16 @@ from os.path import isfile, join
 from typing import TextIO, Tuple, List
 from urllib import parse
 
-
 # Colours
 BACKGROUND = '#121212'
 BACKGROUND_2 = '#242424'
 BACKGROUND_3 = '#363636'
 BACKGROUND_4 = '#484848'
 FOREGROUND = '#7b7b7b'
-HIGHLIGHTS = '#8bc6fe'
+HIGHLIGHT = '#8bc6fe'
+HIGHLIGHT_TEXT = '#000'
+HIGHLIGHT_2 = '#65a2db'
+HIGHLIGHT_TEXT_2 = '#000'
 BORDERS = '#008ffd'
 ERROR = '#eb6773'
 ERROR_TEXT = '#000'
@@ -269,6 +272,10 @@ class PASAccessLog(Log):
     Webpas Web Server Access Log
     """
 
+    def __new__(cls, raw_data: str, *args, **kwargs):
+        if ipaddress.ip_address(raw_data.split(' ')[0]):
+            return super(PASAccessLog, cls).__new__(cls)
+
     def __init__(self, raw_data: str):
         """
         Converts the raw string data to the PASAccessLog object
@@ -424,11 +431,18 @@ class LogFile:
         Sets the header name on the log file, based on the first row Log header field.
         Used for setting the headers in the Treeview
         """
-        self.header = self._logs[0].header()
+        try:
+            self.header = self._logs[0].header()
+        except IndexError:
+            # todo Why does this occur?
+            print(self._logs)
 
     def _create_log_files(self):
         for log in self._raw_logs:
-            self._logs.append(LogType[self.log_type].value(log))
+            try:
+                self._logs.append(LogType[self.log_type].value(log))
+            except ValueError:
+                pass
 
     def to_dict(self):
         return {self.name: self._logs}
@@ -794,6 +808,27 @@ class Button(tk.Button):
         self['foreground'] = FOREGROUND
 
 
+class PrimaryButton(Button):
+    def __init__(self, parent, *args, **kwargs):
+        """
+        param parent: Parent window or frame to place this widget on
+        """
+        Button.__init__(self, parent, *args, **kwargs)
+        self.configure(background=HIGHLIGHT,
+                       foreground=HIGHLIGHT_TEXT,
+                       highlightthickness=0,
+                       borderwidth=0
+                       )
+
+    def on_enter(self, event=None):
+        self['background'] = HIGHLIGHT_2
+        self['foreground'] = HIGHLIGHT_TEXT_2
+
+    def on_leave(self, event=None):
+        self['background'] = HIGHLIGHT
+        self['foreground'] = HIGHLIGHT_TEXT
+
+
 class RadioButton(tk.Radiobutton):
     def __init__(self, parent, *args, **kwargs):
         """
@@ -838,6 +873,7 @@ class OptionsFrame(tk.Frame):
         self.configure(background=BACKGROUND, width=300)
 
         # Widgets
+
         self.title = tk.Label(self,
                               name='lbl_title',
                               text='Logger',
@@ -848,6 +884,27 @@ class OptionsFrame(tk.Frame):
         self.separator = ttk.Separator(self,
                                        name='sep_title',
                                        orient='horizontal')
+
+        self.step_one = tk.Label(self,
+                                 name='lbl_step_one',
+                                 text='Step 1',
+                                 background=BACKGROUND,
+                                 foreground=WHITE_TEXT,
+                                 )
+        self.separator_step_1 = ttk.Separator(self,
+                                              name='sep_step_one',
+                                              orient='horizontal')
+
+        self.step_two = tk.Label(self,
+                                 name='lbl_step_two',
+                                 text='Step 2\n\nSelect a Log type to inspect',
+                                 background=BACKGROUND,
+                                 foreground=WHITE_TEXT,
+                                 )
+
+        self.separator_step_2 = ttk.Separator(self,
+                                              name='sep_step_two',
+                                              orient='horizontal')
         self.log_list_var = tk.StringVar()
         for suffix in Suffix:
             RadioButton(self,
@@ -857,33 +914,32 @@ class OptionsFrame(tk.Frame):
                         variable=self.log_list_var,
                         command=self.radio_selected
                         )
-        self.working_directory_button = Button(self, name='btn_working_directory', text='Set Directory',
+        self.working_directory_button = Button(self,
+                                               name='btn_working_directory',
+                                               text='Set Directory',
                                                command=self.select_working_folder)
         self.working_directory_var = tk.StringVar()
         self.working_directory_var.set(os.getcwd())
 
-        self.read_logs_button = Button(self, name='btn_read', text='Read Logs', command=self.read_logs)
+        self.read_logs_button = PrimaryButton(self, name='btn_read', text='Read Logs', command=self.read_logs)
         self.filter_button = Button(self, name='btn_filter', text='Filter', command=self.filter)
         self.export_button = Button(self, name='btn_export', text='Export to CSV', command=self.export_logs_to_csv)
 
-        self.ur_number_search = SearchBox(self, name='srb_ur_number', label='UR Number search', background=BACKGROUND, foreground=FOREGROUND)
-        self.visit_number_search = SearchBox(self, name='srb_visit_number', label='visit number search', background=BACKGROUND,
+        self.ur_number_search = SearchBox(self, name='srb_ur_number', label='UR Number search', background=BACKGROUND,
+                                          foreground=FOREGROUND)
+        self.visit_number_search = SearchBox(self, name='srb_visit_number', label='visit number search',
+                                             background=BACKGROUND,
                                              foreground=FOREGROUND)
-        self.wildcard_search = SearchBox(self, name='srb_wildcard', label='Anywhere search', background=BACKGROUND, foreground=FOREGROUND)
+        self.wildcard_search = SearchBox(self, name='srb_wildcard', label='Anywhere search', background=BACKGROUND,
+                                         foreground=FOREGROUND)
 
         # Packing
         self.title.pack(side='top', padx=(20, 0), pady=(30, 20))
-        self.separator.pack(side='top', fill='x', pady=20)
+        self.separator.pack(side='top', fill='x', pady=(20, 0))
+        self.step_one.pack(side='top', pady=10)
+        self.working_directory_button.pack(side='top', pady=(0, 0), fill='x', ipady=10)
+        self.separator_step_1.pack(side='top', fill='x', pady=10)
 
-        self.working_directory_button.pack(side='top', pady=(00, 0), fill='x', ipady=10)
-
-        for suffix in Suffix:
-            self.nametowidget(f'rb_{suffix.name}').pack(side='top',
-                                                        fill='x',
-                                                        ipady=13)
-
-        self.read_logs_button.pack(side='top', fill='x', ipady=10)
-        self.export_button.pack(side='top', fill='x', ipady=10)
         self.tree_view_data = None
 
     def select_working_folder(self) -> None:
@@ -894,6 +950,19 @@ class OptionsFrame(tk.Frame):
         directory = filedialog.askdirectory(initialdir=os.getcwd())
         self.working_directory_var.set(directory)
         self.parent.parent.title(f'Logger [{self.working_directory_var.get()}]')
+        self.pack_step_two()
+
+    def pack_step_two(self):
+        self.step_two.pack(side='top', fill='x', pady=10)
+        for suffix in Suffix:
+            self.nametowidget(f'rb_{suffix.name}').pack(side='top',
+                                                        fill='x',
+                                                        ipady=13)
+        self.separator_step_2.pack(side='top', fill='x', pady=10)
+
+    def pack_step_three(self):
+        self.read_logs_button.pack(side='top', fill='x', ipady=10)
+        self.export_button.pack(side='top', fill='x', ipady=10)
 
     def log_file_suffix(self):
         try:
@@ -975,6 +1044,7 @@ class OptionsFrame(tk.Frame):
             self.visit_number_search.forget()
             self.wildcard_search.forget()
             self.filter_button.forget()
+        self.pack_step_three()
 
 
 class ResultDisplayFrame(tk.Frame):
