@@ -1,5 +1,6 @@
 import csv
 import sys
+import threading
 import tkinter as tk
 import gzip
 import os
@@ -537,10 +538,21 @@ class LogFolder:
         self._extracted_files = []
         self.logs = {}
         self.filtered_logs = {}
+        self._progress_max = len([file for file in listdir(self._path) if self._log_file_suffix in file]) + 4
+        self._progress_min = 0
+        self._current_progress = 0
         self.header = None
+
+    def run(self):
         self._find_available_files()
         self._create_log_files()
         self._remove_decompressed_files()
+
+    def _update_progress(self):
+        self._current_progress += 1
+
+    def get_progress(self):
+        return self._current_progress
 
     def __repr__(self):
         return f'<LogFolder Path: "{self._path}" Type: "{self._log_file_type}" >'
@@ -554,6 +566,7 @@ class LogFolder:
             with open(join(self._path, f'{file_to_extract[:-2]}txt'), 'wb') as f_out:
                 shutil.copyfileobj(f_in, f_out)
                 self._extracted_files.append(f'{file_to_extract[:-2]}txt')
+        self._update_progress()
 
     def _decompress_files(self) -> None:
         """
@@ -563,6 +576,7 @@ class LogFolder:
             if isfile(join(self._path, file)):
                 if '.gz' in file:
                     self._gz_extract(file)
+        self._update_progress()
 
     def _remove_decompressed_files(self) -> None:
         """
@@ -571,6 +585,7 @@ class LogFolder:
         if self._extracted_files:
             for file in self._extracted_files:
                 os.remove(join(self._path, file))
+        self._update_progress()
 
     def _find_available_files(self) -> None:
         """
@@ -581,13 +596,14 @@ class LogFolder:
             if isfile(join(self._path, file)):
                 if self._log_file_suffix in file:
                     self._files.append(file)
+        self._update_progress()
 
     def _create_log_files(self) -> None:
         """
         Opens each file in the LogFolder._files list and creates a log file
         """
         for file in self._files:
-            with open(join(self._path, file), 'r') as log_file:
+            with open(join(self._path, file), 'r', encoding='latin-1', errors='surrogateescape') as log_file:
                 file_attributes = (file[:file.index(self._log_file_suffix) - 1], self._log_file_type)
                 log_file = LogFileType[self._log_file_type].value(file_attributes, log_file)
                 # todo raise custom error to remove the wrong long types, if there are multiple logs that use
@@ -595,6 +611,7 @@ class LogFolder:
                 if self.header is None:
                     self.header = log_file.header
                 self.logs |= log_file.to_dict()
+            self._update_progress()
 
     @property
     def log_list(self) -> List[Log]:
@@ -608,6 +625,10 @@ class LogFolder:
     @property
     def log_file_type(self):
         return self._log_file_type
+
+    @property
+    def progress_max(self):
+        return self._progress_max
 
 
 @dataclass
@@ -650,6 +671,11 @@ class TreeViewData:
     def filter_all(self, search_query: str):
         pass
 
+    def run(self):
+        self.log_folder.run()
+
+    def progress(self):
+        return self.log_folder.get_progress()
 
 # GUI Classes
 # Widgets
@@ -940,7 +966,52 @@ class ButtonFrame(tk.Frame):
         self.on_leave_animate()
 
 
+class ProgressBar(tk.Toplevel):
+    """
+    Usage
+    ProgressBar(parent: parent window to create the widget from,
+                command: command to be ran in thread,
+                min_value: default 0, set minimum value of progress bar,
+                max_value: default 100, set maximum value of progress bar,
 
+    The command needs a command.progress() function, this function will be used to get the current
+    progress of the task.
+    """
+    def __init__(self, parent, command=None, callback=None, max_value=100, *args, **kwargs):
+        tk.Toplevel.__init__(self, parent, *args, **kwargs)
+        self.wm_overrideredirect(True)
+        self.wm_attributes('-topmost', True)
+        w = '500'
+        h = '20'
+        x = parent.winfo_screenwidth() // 2 - round(int(w)/2)
+        y = parent.winfo_screenheight() // 2 - round(int(h)/2)
+        self.geometry(f'{w}x{h}+{x}+{y}')
+
+        self.parent = parent
+        self.task = command
+        self.callback = callback
+        self.max = max_value
+
+        self.bar = ttk.Progressbar(self, maximum=self.max)
+        self.bar.pack(side='top', fill='x', expand=True)
+        self.thread = threading.Thread(target=self.task.run)
+        self.thread.daemon = True
+        self.start_task()
+
+    def _progress(self):
+        if self.thread.is_alive():
+            self.bar['value'] = self.task.progress()
+            self.after(100, self._progress)
+        else:
+            self.cleanup()
+
+    def start_task(self):
+        self.thread.start()
+        self._progress()
+
+    def cleanup(self):
+        self.callback()
+        self.destroy()
 
 # Frames
 
@@ -972,13 +1043,6 @@ class OptionsFrame(tk.Frame):
         self.separator = ttk.Separator(self,
                                        name='sep_title',
                                        orient='horizontal')
-        self.button_test = ButtonFrame(self,
-                                       name='btn_test',
-                                       title='Test',
-                                       subtext='subtext'
-                                       )
-
-        self.button_test.pack(side='top', pady=(0, 0), fill='x', ipady=10)
         self.step_one = tk.Label(self,
                                  name='lbl_step_one',
                                  text='Step 1',
@@ -1019,9 +1083,9 @@ class OptionsFrame(tk.Frame):
 
         self.working_directory_var.set(os.getcwd())
 
-        self.read_logs_button = PrimaryButton(self, name='btn_read', text='Read Logs', command=self.read_logs)
-        self.filter_button = Button(self, name='btn_filter', text='Filter', command=self.filter)
-        self.export_button = Button(self, name='btn_export', text='Export to CSV', command=self.export_logs_to_csv)
+        self.read_logs_button = ButtonFrame(self, title='Read Logs', subtext='', name='btn_read',  command=self.read_logs)
+        self.filter_button = ButtonFrame(self, title='Filter', subtext='', name='btn_filter',  command=self.filter)
+        self.export_button = ButtonFrame(self, title='Export to CSV', subtext='', name='btn_export',  command=self.export_logs_to_csv)
 
         self.ur_number_search = SearchBox(self, name='srb_ur_number', label='UR Number search', background=BACKGROUND,
                                           foreground=FOREGROUND)
@@ -1069,19 +1133,30 @@ class OptionsFrame(tk.Frame):
         except KeyError:
             messagebox.showerror(title='No log type selected',
                                  message='Invalid log file type to read. Please select a valid log file type')
-            # self.log_list.configure(self, bg=ERROR)
-            # todo revert the color after new selection made
 
     def read_logs(self):
         # todo check if the log type has changed
         if self.tree_view_data is None:
             self.tree_view_data = TreeViewData(log_folder=LogFolder(directory_path=self.working_directory_var.get(),
                                                                     log_file_suffix=self.log_file_suffix()))
+            ProgressBar(self, self.tree_view_data,
+                        callback=self.filter_data,
+                        max_value=self.tree_view_data.log_folder.progress_max)
         else:
             pass
-        self.filter()
 
     def filter(self):
+        selected_log = self.log_list_var.get()
+        if 'PAS' in selected_log or 'BRD' in selected_log or 'REC' in selected_log:
+            self.ur_number_search.pack(side='top', pady=(20, 0), fill='x')
+            self.visit_number_search.pack(side='top', pady=(20, 0), fill='x')
+            self.wildcard_search.pack(side='top', pady=(20, 0), fill='x')
+        else:
+            self.ur_number_search.forget()
+            self.visit_number_search.forget()
+            self.wildcard_search.forget()
+
+    def filter_data(self):
         self.tree_view_data.filter_by_ur_number(self.ur_number_search.get_keywords())
         if self.visit_number_search.get_keywords():
             pass
@@ -1132,17 +1207,7 @@ class OptionsFrame(tk.Frame):
                                    message='You haven\'t loaded any data to export.')
 
     def radio_selected(self):
-        selected_log = self.log_list_var.get()
-        if 'PAS' in selected_log or 'BRD' in selected_log or 'REC' in selected_log:
-            self.ur_number_search.pack(side='top', pady=(20, 0), fill='x')
-            self.visit_number_search.pack(side='top', pady=(20, 0), fill='x')
-            self.wildcard_search.pack(side='top', pady=(20, 0), fill='x')
-            self.filter_button.pack(side='top', pady=(0, 0), fill='x', ipady=10)
-        else:
-            self.ur_number_search.forget()
-            self.visit_number_search.forget()
-            self.wildcard_search.forget()
-            self.filter_button.forget()
+        self.filter_button.pack(side='top', pady=(0, 0), fill='x', ipady=10)
         self.pack_step_three()
 
 

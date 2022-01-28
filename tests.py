@@ -2,7 +2,6 @@ import _tkinter
 import tkinter as tk
 import unittest
 import main
-import coverage
 
 
 class TKTestCase(unittest.TestCase):
