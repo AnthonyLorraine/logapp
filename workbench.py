@@ -84,7 +84,7 @@ HL7_MESSAGE = {
 
 }
 HL7_MESSAGE['S'] = HL7_MESSAGE['I']
-BRD_FILE_PATH = r'C:\Users\e261712\Desktop\1471683'
+BRD_FILE_PATH = r'C:\Users\username\Desktop\working_directory'
 SB = '\x0b'
 EB = '\x1c'
 CR = '\x0d'
